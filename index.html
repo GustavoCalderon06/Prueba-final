@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoreo de Caldera</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        .chart-container {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .chart {
+            flex: 1 1 45%;
+            max-width: 45%;
+            margin: 10px;
+        }
+        @media (max-width: 768px) {
+            .chart {
+                flex: 1 1 100%;
+                max-width: 100%;
+            }
+        }
+        .status {
+            margin-top: 20px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .activo {
+            color: green;
+        }
+        .detenida {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Monitoreo de Caldera</h1>
+    <div class="status">
+        Estado de la Caldera:  
+        <span id="calderaEstado" class="detenida">Detenida</span>
+    </div>
+    <div class="chart-container">
+        <div class="chart">
+            <canvas id="gzChart" width="400" height="200"></canvas>
+        </div>
+        <div class="chart">
+            <canvas id="azChart" width="400" height="200"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const MAX_ENTRIES = 90;
+
+        const gzCtx = document.getElementById('gzChart').getContext('2d');
+        const azCtx = document.getElementById('azChart').getContext('2d');
+
+        const gzChart = new Chart(gzCtx, {
+            type: 'line',
+            data: {
+                labels: Array(MAX_ENTRIES).fill(''),
+                datasets: [{
+                    label: 'GZ',
+                    data: [],
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        display: false
+                    },
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        const azChart = new Chart(azCtx, {
+            type: 'line',
+            data: {
+                labels: Array(MAX_ENTRIES).fill(''),
+                datasets: [{
+                    label: 'AZ',
+                    data: [],
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    borderWidth: 1,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        display: false
+                    },
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        socket.on('update_data', function(data) {
+            if (gzChart.data.datasets[0].data.length >= MAX_ENTRIES) {
+                gzChart.data.datasets[0].data.shift();
+                azChart.data.datasets[0].data.shift();
+            }
+            gzChart.data.datasets[0].data.push(data.gz);
+            azChart.data.datasets[0].data.push(data.az);
+            gzChart.update();
+            azChart.update();
+            actualizarEstadoCaldera(data.activo);
+        });
+
+        function actualizarEstadoCaldera(activo) {
+            const estadoElemento = document.getElementById('calderaEstado');
+            if (activo) {
+                estadoElemento.textContent = 'Activa';
+                estadoElemento.classList.remove('detenida');
+                estadoElemento.classList.add('activo');
+            } else {
+                estadoElemento.textContent = 'Detenida';
+                estadoElemento.classList.remove('activo');
+                estadoElemento.classList.add('detenida');
+            }
+        }
+
+        async function fetchData() {
+            const response = await fetch('/gustavo');
+            const data = await response.json();
+            const gzData = data.gz.slice(-MAX_ENTRIES);
+            const azData = data.az.slice(-MAX_ENTRIES);
+            const activoData = data.activo.slice(-MAX_ENTRIES);
+
+            gzChart.data.datasets[0].data = gzData;
+            azChart.data.datasets[0].data = azData;
+            gzChart.update();
+            azChart.update();
+
+            actualizarEstadoCaldera(activoData[activoData.length - 1]);
+        }
+
+        fetchData();
+    </script>
+</body>
+</html>
